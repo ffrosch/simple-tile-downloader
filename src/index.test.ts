@@ -17,7 +17,7 @@ beforeAll(() => {
       const match = path.match(/^\/(\d+)\/(\d+)\/(\d+)\.png$/);
 
       if (match) {
-        const [, z, x, y] = match;
+        // const [, z, x, y] = match;
 
         // Create a minimal 1x1 PNG (valid image)
         const pngData = new Uint8Array([
