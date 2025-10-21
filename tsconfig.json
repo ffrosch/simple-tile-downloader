@@ -1,0 +1,40 @@
+{
+  "compilerOptions": {
+    // Project Structure
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    // Environment setup & latest features
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    // Set to empty to avoid accidental inclusion of unwanted types,
+    // e.g. the Node.js types that would pollute the global scope.
+    "types": [],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleDetection": "force",
+    "jsx": "react-jsx",
+    "allowJs": true,
+
+    // Bundler mode
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+
+    // Best practices
+    "strict": true,
+    "skipLibCheck": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+
+    // Some stricter flags (disabled by default)
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noPropertyAccessFromIndexSignature": false,
+    "noUncheckedSideEffectImports": true
+  },
+  "include": ["src/**/*.ts"]
+}

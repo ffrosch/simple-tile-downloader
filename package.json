@@ -1,0 +1,27 @@
+{
+  "name": "simple-tile-downloader",
+  "version": "0.1.0-alpha",
+  "author": "Florian Frosch",
+  "module": "src/index.ts",
+  "dependencies": {
+    "ol": "^10.6.1"
+  },
+  "peerDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "description": "Download XYZ tiles from a service given a bounding box and the target zoom levels.",
+  "keywords": [
+    "xyz",
+    "tile",
+    "download",
+    "map",
+    "promise"
+  ],
+  "license": "ISC",
+  "scripts": {
+    "build": "bun build ./src/index.ts --outfile=dist/index.js --target=browser --packages=external && bun run build:declaration",
+    "build:declaration": "tsc --project tsconfig.types.json"
+  },
+  "type": "module",
+  "types": "src/types.ts"
+}
