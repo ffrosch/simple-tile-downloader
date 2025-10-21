@@ -1,8 +1,8 @@
 {
   "name": "simple-tile-downloader",
-  "version": "0.1.0-alpha",
+  "version": "0.1.1-alpha",
+  "type": "module",
   "author": "Florian Frosch",
-  "module": "src/index.ts",
   "dependencies": {
     "ol": "^10.6.1"
   },
@@ -26,8 +26,13 @@
     "build:declaration": "tsc --project tsconfig.types.json",
     "publish": "bun run build && bun publish"
   },
-  "type": "module",
-  "types": "src/types.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js"
+    }
+  },
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ]
