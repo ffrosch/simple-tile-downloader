@@ -1,5 +1,4 @@
-/** Must be WGS84 */
-type Bbox = [number, number, number, number];
+import type { Extent } from 'ol/extent'
 
 export interface TileRange {
   zoom: number;
@@ -17,7 +16,7 @@ export interface Source {
 
 interface SourceConfig extends Source {
   /** Must be WGS84 */
-  bbox: Bbox;
+  bbox: Extent;
   minZoom: number;
   maxZoom: number;
 }
