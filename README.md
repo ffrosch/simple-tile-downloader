@@ -21,8 +21,8 @@ let currentTile = 1;
 
 console.log(`Starting download of ${config.totalCount} tiles...`)
 for await (const tile of fetchTiles(config)) {
-    console.log(`Download of tile ${currentTile} with size ${tile.size} finished`;)
-    totalSize += tile.size;
+    console.log(`Download of tile ${currentTile} from ${tile.url} finished (${tile.blob.size} Bytes)`;)
+    totalSize += tile.blob.size;
     currentTile++;
 }
 console.log(`Total downloaded size: ${totalSize}`)
