@@ -21,7 +21,7 @@
 
 **Implementation**:
 ```typescript
-const config = tilesConfig(targetArea);  // Calculate
+const config = processTilesConfig(config);  // Calculate
 for await (const tile of fetchTiles(config)) { }  // Execute
 ```
 
@@ -74,7 +74,7 @@ if (!extent) {
   throw new Error(`Couldn't get the extent for ${crs}`);
 }
 ```
-- Configuration errors in `tilesConfig()`
+- Configuration errors in `processTilesConfig()`
 - Invalid CRS or bbox
 - Missing required parameters
 
@@ -104,7 +104,7 @@ return Promise.reject(new Error("..."));
 - Clear contract separation
 
 ### 3. Single Responsibility
-- `tilesConfig`: Configuration calculation only
+- `processTilesConfig`: Configuration calculation only
 - `fetchTile`: Single download only
 - `fetchTiles`: Batch orchestration only
 
@@ -129,7 +129,7 @@ return Promise.reject(new Error("..."));
 
 ### Coordinate Systems
 - Input: WGS84 (EPSG:4326) for bbox
-- Processing: Arbitrary CRS via `targetArea.crs`
+- Processing: Arbitrary CRS via `config.crs`
 - Transformation: `transformExtent()` for tile calculations
 
 ### Tile Grid

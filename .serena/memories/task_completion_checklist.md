@@ -20,7 +20,7 @@ tsc --noEmit
 
 ### 3. Manual Testing (No automated tests yet)
 - Test core functions manually if changes affect:
-  - `tilesConfig()` calculation logic
+  - `processTilesConfig()` calculation logic
   - `fetchTile()` download behavior
   - `fetchTiles()` generator/parallelism
 - Verify OpenLayers integration still works

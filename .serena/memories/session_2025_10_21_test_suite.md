@@ -20,16 +20,16 @@ Created comprehensive test suite for simple-tile-downloader based on README exam
 ### 3. Bug Discovery and Fix
 **Location**: `src/tiles.ts:99-111` (generateTileURLs function)
 
-**Issue**: Division by zero when `sourceSubdomains` is empty array
-- Original: `(currentSubdomainIndex + 1) % sourceSubdomains?.length`
+**Issue**: Division by zero when `subdomains` is empty array
+- Original: `(currentSubdomainIndex + 1) % subdomains?.length`
 - When length = 0, modulo operation produces NaN
 - Caused tests without subdomains to fail
 
 **Fix Applied**:
 ```typescript
 // Only cycle subdomains if array is not empty
-if (sourceSubdomains.length > 0) {
-  currentSubdomainIndex = (currentSubdomainIndex + 1) % sourceSubdomains.length;
+if (subdomains.length > 0) {
+  currentSubdomainIndex = (currentSubdomainIndex + 1) % subdomains.length;
 }
 ```
 
@@ -41,7 +41,7 @@ Discovered actual API differs from README:
 
 ## Test Coverage Details
 
-### tilesConfig Tests (4)
+### processTilesConfig Tests (4)
 1. ✅ Calculates correct tile count for small area
 2. ✅ Validates CRS (throws on invalid)
 3. ✅ Validates subdomain requirement for `{s}` URLs

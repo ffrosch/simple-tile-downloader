@@ -17,7 +17,7 @@ A TypeScript library for downloading XYZ map tiles from tile services given a bo
 - **Keywords**: xyz, tile, download, map, promise
 
 ## Core Functionality
-1. **tilesConfig**: Calculate tile ranges for bounding box and zoom levels
+1. **processTilesConfig**: Calculate tile ranges for bounding box and zoom levels
 2. **fetchTile**: Download single tile with validation
 3. **fetchTiles**: Batch download with async generator and parallelism control
 

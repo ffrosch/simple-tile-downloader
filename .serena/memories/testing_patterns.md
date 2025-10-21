@@ -90,7 +90,7 @@ test("throws error for invalid input", () => {
 ### Specific Error Messages
 ```typescript
 expect(() => {
-  tilesConfig({ crs: "INVALID" });
+  processTilesConfig({ crs: "INVALID" });
 }).toThrow("Couldn't get the extent");
 ```
 

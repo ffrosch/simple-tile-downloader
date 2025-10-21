@@ -21,16 +21,16 @@ simple-tile-downloader/
 
 ### src/index.ts
 - Main entry point
-- Re-exports public API: `tilesConfig`, `fetchTile`, `fetchTiles`
+- Re-exports public API: `processTilesConfig`, `fetchTile`, `fetchTiles`
 
 ### src/types.ts
 - TypeScript type definitions
-- Interfaces: TileRange, Source, TargetArea, FetchTilesConfig
+- Interfaces: TileRange, Source, TilesConfig, FetchTilesConfig
 - Type alias: Bbox (WGS84 coordinate array)
 
 ### src/tiles.ts
 - Core implementation (3 exported functions):
-  - `tilesConfig(targetArea)`: Calculate tile ranges
+  - `processTilesConfig(config)`: Calculate tile ranges
   - `fetchTile(url)`: Single tile download
   - `fetchTiles(config, options)`: Batch download generator
 

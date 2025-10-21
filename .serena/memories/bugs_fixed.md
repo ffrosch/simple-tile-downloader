@@ -10,14 +10,14 @@ Found during test suite development when running tests without subdomains.
 
 ### Symptoms
 ```
-TypeError: undefined is not an object (evaluating 'sourceSubdomains[currentSubdomainIndex]')
+TypeError: undefined is not an object (evaluating 'subdomains[currentSubdomainIndex]')
 ```
 
 ### Root Cause
-When `sourceSubdomains` is an empty array (`[]`):
-1. Line 99: `(currentSubdomainIndex + 1) % sourceSubdomains?.length`
+When `subdomains` is an empty array (`[]`):
+1. Line 99: `(currentSubdomainIndex + 1) % subdomains?.length`
 2. When `length = 0`, modulo operation: `1 % 0 = NaN`
-3. Line 108: `sourceSubdomains[NaN]` returns `undefined`
+3. Line 108: `subdomains[NaN]` returns `undefined`
 4. Attempting to access `undefined` causes TypeError
 
 ### Original Code
@@ -30,14 +30,14 @@ function* generateTileURLs() {
     for (let x = minX; x <= maxX; x++) {
       for (let y = minY; y <= maxY; y++) {
         currentSubdomainIndex =
-          (currentSubdomainIndex + 1) % sourceSubdomains?.length; // BUG: 1 % 0 = NaN
+          (currentSubdomainIndex + 1) % subdomains?.length; // BUG: 1 % 0 = NaN
 
-        let url = sourceUrl
+        let url = url
           .replace("{x}", x.toString())
           .replace("{y}", y.toString())
           .replace("{-y}", (Math.pow(2, zoom) - 1 - y).toString())
           .replace("{z}", zoom.toString())
-          .replace("{s}", sourceSubdomains[currentSubdomainIndex] ?? ""); // BUG: [NaN] = undefined
+          .replace("{s}", subdomains[currentSubdomainIndex] ?? ""); // BUG: [NaN] = undefined
 
         yield { url, x, y, z: zoom };
       }
@@ -56,17 +56,17 @@ function* generateTileURLs() {
     for (let x = minX; x <= maxX; x++) {
       for (let y = minY; y <= maxY; y++) {
         // Only cycle subdomains if array is not empty
-        if (sourceSubdomains.length > 0) {
+        if (subdomains.length > 0) {
           currentSubdomainIndex =
-            (currentSubdomainIndex + 1) % sourceSubdomains.length;
+            (currentSubdomainIndex + 1) % subdomains.length;
         }
 
-        let url = sourceUrl
+        let url = url
           .replace("{x}", x.toString())
           .replace("{y}", y.toString())
           .replace("{-y}", (Math.pow(2, zoom) - 1 - y).toString())
           .replace("{z}", zoom.toString())
-          .replace("{s}", sourceSubdomains[currentSubdomainIndex] ?? "");
+          .replace("{s}", subdomains[currentSubdomainIndex] ?? "");
 
         yield { url, x, y, z: zoom };
       }
@@ -82,8 +82,8 @@ function* generateTileURLs() {
 
 ### Prevention
 - Add test case for empty subdomain array
-- Add test case for undefined sourceSubdomains
-- Consider adding runtime validation in tilesConfig
+- Add test case for undefined subdomains
+- Consider adding runtime validation in processTilesConfig
 
 ## Issue #2: README Example Inconsistency (Documentation)
 

@@ -12,8 +12,8 @@
   - `noUncheckedSideEffectImports`: true
 
 ## Naming Conventions
-- **Functions**: camelCase (`tilesConfig`, `fetchTile`, `fetchTiles`)
-- **Types/Interfaces**: PascalCase (`TileRange`, `SourceConfig`, `TargetArea`)
+- **Functions**: camelCase (`processTilesConfig`, `fetchTile`, `fetchTiles`)
+- **Types/Interfaces**: PascalCase (`TileRange`, `SourceConfig`, `TilesConfig`)
 - **Type Aliases**: PascalCase (`Bbox`)
 - **Variables**: camelCase
 
