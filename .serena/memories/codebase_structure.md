@@ -25,7 +25,7 @@ simple-tile-downloader/
 
 ### src/types.ts
 - TypeScript type definitions
-- Interfaces: TileRange, Source, TargetArea, TilesConfig
+- Interfaces: TileRange, Source, TargetArea, FetchTilesConfig
 - Type alias: Bbox (WGS84 coordinate array)
 
 ### src/tiles.ts
