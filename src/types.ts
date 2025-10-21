@@ -26,7 +26,18 @@ export interface TargetArea extends SourceConfig {
   crs: string;
 }
 
-export interface TilesConfig extends SourceConfig {
+export interface FetchTilesConfig extends SourceConfig {
   totalCount: number;
   tileRanges: TileRange[];
+}
+
+export interface UnfetchedTile {
+  url: string;
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface FetchedTile extends UnfetchedTile {
+  blob: Blob;
 }

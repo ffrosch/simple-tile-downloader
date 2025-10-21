@@ -1,9 +1,15 @@
 import { containsExtent } from "ol/extent";
 import { get as getProjection, transformExtent } from "ol/proj";
 import { createXYZ } from "ol/tilegrid";
-import type { TargetArea, TileRange, TilesConfig } from "./types";
+import type {
+  TargetArea,
+  FetchedTile,
+  UnfetchedTile,
+  TileRange,
+  FetchTilesConfig,
+} from "./types";
 
-export function tilesConfig(targetArea: TargetArea): TilesConfig {
+export function tilesConfig(targetArea: TargetArea): FetchTilesConfig {
   const extent = getProjection(targetArea.crs)?.getExtent();
 
   if (!extent) {
@@ -50,8 +56,10 @@ export function tilesConfig(targetArea: TargetArea): TilesConfig {
   };
 }
 
-export async function fetchTile(url: string): Promise<Blob> {
-  return fetch(url)
+export async function fetchTile(
+  unfetchedTile: UnfetchedTile
+): Promise<FetchedTile> {
+  return fetch(unfetchedTile.url)
     .then((response) => {
       if (response.ok) {
         return response.blob();
@@ -68,47 +76,47 @@ export async function fetchTile(url: string): Promise<Blob> {
       if (!blob.type.startsWith("image/")) {
         return Promise.reject(new Error("Response is not an image"));
       } else {
-        return blob;
+        return { ...unfetchedTile, blob };
       }
     });
 }
 
 export async function* fetchTiles(
-  TilesConfig: TilesConfig,
+  FetchTilesConfig: FetchTilesConfig,
   options: { maxParallelDownloads: number } = { maxParallelDownloads: 6 }
-): AsyncGenerator<Blob, void, unknown> {
-  const { tileRanges, sourceUrl, sourceSubdomains } = {
-    sourceSubdomains: [],
-    ...TilesConfig,
-  };
-  const pendingDownloads = new Set<Promise<Blob>>();
+): AsyncGenerator<FetchedTile, void, unknown> {
+  const { tileRanges, sourceUrl, sourceSubdomains } = FetchTilesConfig;
+  const pendingDownloads = new Set<Promise<FetchedTile>>();
 
-  function* generateTileURLs() {
+  function* generateTileURLs(): Generator<UnfetchedTile, void, unknown> {
     let currentSubdomainIndex = 0;
 
     for (let i = 0; i < tileRanges.length; i++) {
       const { minX, maxX, minY, maxY, zoom } = tileRanges[i] as TileRange;
       for (let x = minX; x <= maxX; x++) {
         for (let y = minY; y <= maxY; y++) {
-          currentSubdomainIndex =
-            (currentSubdomainIndex + 1) % sourceSubdomains?.length;
-
           let url = sourceUrl
             .replace("{x}", x.toString())
             .replace("{y}", y.toString())
             // TMS has origin at bottom-left, need to invert
             .replace("{-y}", (Math.pow(2, zoom) - 1 - y).toString())
             .replace("{z}", zoom.toString())
-            .replace("{s}", sourceSubdomains[currentSubdomainIndex] ?? "");
 
-          yield url;
+          // Only cycle subdomains if array is not empty
+          if (sourceSubdomains && sourceSubdomains.length > 0) {
+            currentSubdomainIndex =
+              (currentSubdomainIndex + 1) % sourceSubdomains.length;
+            url = url.replace("{s}", sourceSubdomains[currentSubdomainIndex] ?? "");
+          }
+
+          yield { url, x, y, z: zoom };
         }
       }
     }
   }
 
-  for (const url of generateTileURLs()) {
-    const tile = fetchTile(url);
+  for (const unfetchedTile of generateTileURLs()) {
+    const tile = fetchTile(unfetchedTile);
     pendingDownloads.add(tile);
     tile.then(() => pendingDownloads.delete(tile));
 
