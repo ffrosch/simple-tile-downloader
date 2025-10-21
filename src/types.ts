@@ -11,8 +11,8 @@ export interface TileRange {
 }
 
 export interface Source {
-  sourceUrl: string;
-  sourceSubdomains?: string[];
+  url: string;
+  subdomains?: string[];
 }
 
 interface SourceConfig extends Source {
@@ -22,11 +22,11 @@ interface SourceConfig extends Source {
   maxZoom: number;
 }
 
-export interface TargetArea extends SourceConfig {
+export interface TilesConfig extends SourceConfig {
   crs: string;
 }
 
-export interface FetchTilesConfig extends SourceConfig {
+export interface FetchTilesConfig extends TilesConfig {
   totalCount: number;
   tileRanges: TileRange[];
 }

@@ -1,2 +1,3 @@
 // Export functions
-export { tilesConfig, fetchTile, fetchTiles } from "./tiles";
+export { fetchTile, fetchTiles, processTilesConfig } from "./tiles";
+export { default } from "./tiles";

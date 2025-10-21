@@ -2,40 +2,42 @@ import { containsExtent } from "ol/extent";
 import { get as getProjection, transformExtent } from "ol/proj";
 import { createXYZ } from "ol/tilegrid";
 import type {
-  TargetArea,
+  TilesConfig,
   FetchedTile,
   UnfetchedTile,
   TileRange,
   FetchTilesConfig,
 } from "./types";
+import partial from "lodash.partial";
 
-export function tilesConfig(targetArea: TargetArea): FetchTilesConfig {
-  const extent = getProjection(targetArea.crs)?.getExtent();
+export function processTilesConfig(config: TilesConfig): FetchTilesConfig {
+  const { crs, bbox, url, subdomains, maxZoom, minZoom } = config;
+  const extent = getProjection(crs)?.getExtent();
 
   if (!extent) {
-    throw new Error(`Couldn't get the extent for ${targetArea.crs}`);
-  } else if (!containsExtent(extent, targetArea.bbox)) {
+    throw new Error(`Couldn't get the extent for ${crs}`);
+  } else if (!containsExtent(extent, bbox)) {
     throw new Error(
-      `The supplied bounding box exceeds the extent of ${targetArea.crs}`
+      `The supplied bounding box exceeds the extent of ${crs}`
     );
   }
 
-  if (targetArea.sourceUrl.includes("{s}") && !targetArea.sourceSubdomains) {
+  if (url.includes("{s}") && !subdomains) {
     throw new Error(
-      `Missing Subdomains argument for url ${targetArea.sourceUrl}`
+      `Missing Subdomains argument for url ${url}`
     );
   }
 
   const tileGrid = createXYZ({
-    extent: getProjection(targetArea.crs)?.getExtent(),
-    maxZoom: targetArea.maxZoom,
-    minZoom: targetArea.minZoom,
+    extent,
+    maxZoom,
+    minZoom,
   });
 
   const tileRanges: TileRange[] = [];
-  for (let zoom = targetArea.minZoom; zoom <= targetArea.maxZoom; zoom++) {
+  for (let zoom = minZoom; zoom <= maxZoom; zoom++) {
     const { minX, maxX, minY, maxY } = tileGrid.getTileRangeForExtentAndZ(
-      transformExtent(targetArea.bbox, "EPSG:4326", targetArea.crs),
+      transformExtent(bbox, "EPSG:4326", crs),
       zoom
     );
     const count = (maxX - minX + 1) * (maxY - minY + 1);
@@ -46,13 +48,9 @@ export function tilesConfig(targetArea: TargetArea): FetchTilesConfig {
     .reduce((previousCount, currentCount) => previousCount + currentCount);
 
   return {
+    ...config,
     totalCount,
     tileRanges,
-    bbox: targetArea.bbox,
-    minZoom: targetArea.minZoom,
-    maxZoom: targetArea.maxZoom,
-    sourceUrl: targetArea.sourceUrl,
-    sourceSubdomains: targetArea.sourceSubdomains,
   };
 }
 
@@ -82,10 +80,10 @@ export async function fetchTile(
 }
 
 export async function* fetchTiles(
-  FetchTilesConfig: FetchTilesConfig,
+  config: FetchTilesConfig,
   options: { maxParallelDownloads: number } = { maxParallelDownloads: 6 }
 ): AsyncGenerator<FetchedTile, void, unknown> {
-  const { tileRanges, sourceUrl, sourceSubdomains } = FetchTilesConfig;
+  const { tileRanges, url: urlTemplate, subdomains } = config;
   const pendingDownloads = new Set<Promise<FetchedTile>>();
 
   function* generateTileURLs(): Generator<UnfetchedTile, void, unknown> {
@@ -95,7 +93,7 @@ export async function* fetchTiles(
       const { minX, maxX, minY, maxY, zoom } = tileRanges[i] as TileRange;
       for (let x = minX; x <= maxX; x++) {
         for (let y = minY; y <= maxY; y++) {
-          let url = sourceUrl
+          let url = urlTemplate
             .replace("{x}", x.toString())
             .replace("{y}", y.toString())
             // TMS has origin at bottom-left, need to invert
@@ -103,10 +101,10 @@ export async function* fetchTiles(
             .replace("{z}", zoom.toString())
 
           // Only cycle subdomains if array is not empty
-          if (sourceSubdomains && sourceSubdomains.length > 0) {
+          if (subdomains && subdomains.length > 0) {
             currentSubdomainIndex =
-              (currentSubdomainIndex + 1) % sourceSubdomains.length;
-            url = url.replace("{s}", sourceSubdomains[currentSubdomainIndex] ?? "");
+              (currentSubdomainIndex + 1) % subdomains.length;
+            url = url.replace("{s}", subdomains[currentSubdomainIndex] ?? "");
           }
 
           yield { url, x, y, z: zoom };
@@ -127,5 +125,30 @@ export async function* fetchTiles(
 
   while (pendingDownloads.size > 0) {
     yield Promise.race(pendingDownloads);
+  }
+}
+
+export default class Tiles implements FetchTilesConfig {
+  readonly url;
+  readonly subdomains;
+  readonly bbox;
+  readonly minZoom;
+  readonly maxZoom;
+  readonly crs;
+  readonly totalCount;
+  readonly tileRanges;
+  fetch;
+
+  constructor(config: TilesConfig) {
+    const fetchConfig = processTilesConfig(config)
+    this.url = fetchConfig.url;
+    this.subdomains = fetchConfig.subdomains;
+    this.bbox = fetchConfig.bbox;
+    this.minZoom = fetchConfig.minZoom;
+    this.maxZoom = fetchConfig.maxZoom;
+    this.crs = fetchConfig.crs;
+    this.totalCount = fetchConfig.totalCount;
+    this.tileRanges = fetchConfig.tileRanges;
+    this.fetch = partial(fetchTiles, fetchConfig)
   }
 }

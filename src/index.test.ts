@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { tilesConfig, fetchTiles } from "./index";
+import { processTilesConfig, fetchTiles } from "./index";
 
 // Mock tile server setup
 let server: ReturnType<typeof Bun.serve> | null = null;
@@ -46,10 +46,10 @@ afterAll(() => {
   server?.stop();
 });
 
-describe("tilesConfig", () => {
+describe("processTilesConfig", () => {
   test("calculates tile ranges for multiple zoom levels", () => {
-    const config = tilesConfig({
-      sourceUrl: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
+    const config = processTilesConfig({
+      url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
       bbox: [13.3, 52.5, 13.4, 52.55], // Very small area in Berlin
       minZoom: 11,
       maxZoom: 13,
@@ -64,8 +64,8 @@ describe("tilesConfig", () => {
 
   test("throws error for invalid CRS", () => {
     expect(() => {
-      tilesConfig({
-        sourceUrl: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
+      processTilesConfig({
+        url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
         bbox: [13.3, 52.5, 13.4, 52.55],
         minZoom: 11,
         maxZoom: 13,
@@ -76,35 +76,35 @@ describe("tilesConfig", () => {
 
   test("throws error for missing subdomains when {s} in URL", () => {
     expect(() => {
-      tilesConfig({
-        sourceUrl: `http://{s}.localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
+      processTilesConfig({
+        url: `http://{s}.localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
         bbox: [13.3, 52.5, 13.4, 52.55],
         minZoom: 11,
         maxZoom: 11,
         crs: "EPSG:3857",
-        // Missing sourceSubdomains
+        // Missing subdomains
       });
     }).toThrow("Missing Subdomains");
   });
 
   test("accepts subdomains when {s} in URL", () => {
-    const config = tilesConfig({
-      sourceUrl: `http://{s}.localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
-      sourceSubdomains: ["a", "b", "c"],
+    const config = processTilesConfig({
+      url: `http://{s}.localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
+      subdomains: ["a", "b", "c"],
       bbox: [13.3, 52.5, 13.4, 52.55],
       minZoom: 11,
       maxZoom: 11,
       crs: "EPSG:3857",
     });
 
-    expect(config.sourceSubdomains).toEqual(["a", "b", "c"]);
+    expect(config.subdomains).toEqual(["a", "b", "c"]);
   });
 });
 
 describe("fetchTiles", () => {
   test("downloads tiles over multiple zoom levels", async () => {
-    const config = tilesConfig({
-      sourceUrl: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
+    const config = processTilesConfig({
+      url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
       bbox: [13.3, 52.5, 13.4, 52.55], // Very small area in Berlin
       minZoom: 11,
       maxZoom: 13,
@@ -151,9 +151,9 @@ describe("fetchTiles", () => {
   });
 
   test("downloads tiles with subdomain rotation", async () => {
-    const config = tilesConfig({
-      sourceUrl: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
-      sourceSubdomains: ["a", "b", "c"],
+    const config = processTilesConfig({
+      url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
+      subdomains: ["a", "b", "c"],
       bbox: [13.3, 52.5, 13.32, 52.51], // Very small area
       minZoom: 12,
       maxZoom: 12,
@@ -171,8 +171,8 @@ describe("fetchTiles", () => {
   });
 
   test("handles single zoom level", async () => {
-    const config = tilesConfig({
-      sourceUrl: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
+    const config = processTilesConfig({
+      url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
       bbox: [13.3, 52.5, 13.35, 52.525],
       minZoom: 11,
       maxZoom: 11, // Single zoom level
