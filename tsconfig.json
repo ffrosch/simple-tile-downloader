@@ -10,7 +10,7 @@
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     // Set to empty to avoid accidental inclusion of unwanted types,
     // e.g. the Node.js types that would pollute the global scope.
-    "types": [],
+    "types": ["bun-types"],
     "target": "ESNext",
     "module": "Preserve",
     "moduleDetection": "force",

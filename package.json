@@ -9,6 +9,9 @@
   "peerDependencies": {
     "typescript": "^5.9.3"
   },
+  "devDependencies": {
+    "@types/bun": "^1.3.0"
+  },
   "description": "Download XYZ tiles from a service given a bounding box and the target zoom levels.",
   "keywords": [
     "xyz",
