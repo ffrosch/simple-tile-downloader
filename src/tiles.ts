@@ -1,6 +1,5 @@
-import { containsExtent } from "ol/extent";
-import { get as getProjection, transformExtent } from "ol/proj";
-import { createXYZ } from "ol/tilegrid";
+import { getCRSExtent, containsExtent } from "./crs";
+import { createXYZTileGrid, getTileRangeForExtentAndZ } from "./tilegrid";
 import type {
   TilesConfig,
   FetchedTile,
@@ -10,13 +9,13 @@ import type {
 } from "./types";
 import partial from "lodash.partial";
 
-export function processTilesConfig(config: TilesConfig): FetchTilesConfig {
+export async function processTilesConfig(config: TilesConfig): Promise<FetchTilesConfig> {
   const { crs, bbox, url, subdomains, maxZoom, minZoom } = config;
-  const extent = getProjection(crs)?.getExtent();
 
-  if (!extent) {
-    throw new Error(`Couldn't get the extent for ${crs}`);
-  } else if (!containsExtent(extent, bbox)) {
+  // Fetch CRS extent from epsg.io
+  const extent = await getCRSExtent(crs);
+
+  if (!containsExtent(extent, bbox)) {
     throw new Error(
       `The supplied bounding box exceeds the extent of ${crs}`
     );
@@ -28,20 +27,18 @@ export function processTilesConfig(config: TilesConfig): FetchTilesConfig {
     );
   }
 
-  const tileGrid = createXYZ({
-    extent,
-    maxZoom,
-    minZoom,
-  });
+  const tileGrid = createXYZTileGrid(extent, minZoom, maxZoom);
 
   const tileRanges: TileRange[] = [];
   for (let zoom = minZoom; zoom <= maxZoom; zoom++) {
-    const { minX, maxX, minY, maxY } = tileGrid.getTileRangeForExtentAndZ(
-      transformExtent(bbox, "EPSG:4326", crs),
-      zoom
+    const tileRange = getTileRangeForExtentAndZ(
+      bbox,
+      "EPSG:4326",
+      crs,
+      zoom,
+      tileGrid
     );
-    const count = (maxX - minX + 1) * (maxY - minY + 1);
-    tileRanges.push({ zoom, minX, maxX, minY, maxY, count });
+    tileRanges.push(tileRange);
   }
   const totalCount = tileRanges
     .map((range) => range.count)
@@ -139,8 +136,7 @@ export default class Tiles implements FetchTilesConfig {
   readonly tileRanges;
   fetch;
 
-  constructor(config: TilesConfig) {
-    const fetchConfig = processTilesConfig(config)
+  private constructor(fetchConfig: FetchTilesConfig) {
     this.url = fetchConfig.url;
     this.subdomains = fetchConfig.subdomains;
     this.bbox = fetchConfig.bbox;
@@ -149,6 +145,14 @@ export default class Tiles implements FetchTilesConfig {
     this.crs = fetchConfig.crs;
     this.totalCount = fetchConfig.totalCount;
     this.tileRanges = fetchConfig.tileRanges;
-    this.fetch = partial(fetchTiles, fetchConfig)
+    this.fetch = partial(fetchTiles, fetchConfig);
+  }
+
+  /**
+   * Create a new Tiles instance asynchronously
+   */
+  static async create(config: TilesConfig): Promise<Tiles> {
+    const fetchConfig = await processTilesConfig(config);
+    return new Tiles(fetchConfig);
   }
 }

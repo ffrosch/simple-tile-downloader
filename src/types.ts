@@ -1,4 +1,40 @@
-import type { Extent } from 'ol/extent'
+export type Extent = [number, number, number, number];
+
+/**
+ * EPSG.io API response structure for CRS information
+ */
+export interface EPSGInfo {
+  code: string;
+  name: string;
+  bbox: {
+    south_latitude: number;
+    west_longitude: number;
+    north_latitude: number;
+    east_longitude: number;
+  };
+}
+
+/**
+ * Cached CRS information
+ */
+export interface CRSCacheEntry {
+  proj4String: string;
+  bboxWGS84: Extent;
+  extent: Extent;
+  name: string;
+}
+
+
+/**
+ * XYZ Tile Grid configuration
+ */
+export interface XYZTileGrid {
+  extent: Extent;
+  minZoom: number;
+  maxZoom: number;
+  tileSize: number;
+  resolutions: number[];
+}
 
 export interface TileRange {
   zoom: number;
