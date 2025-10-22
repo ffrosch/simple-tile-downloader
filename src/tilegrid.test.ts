@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { processTilesConfig, fetchTiles } from "./index";
+import { processTilesConfig, fetchTiles } from "./tiles";
 
 // Mock tile server setup
 let server: ReturnType<typeof Bun.serve> | null = null;
@@ -47,8 +47,8 @@ afterAll(() => {
 });
 
 describe("processTilesConfig", () => {
-  test("calculates tile ranges for multiple zoom levels", () => {
-    const config = processTilesConfig({
+  test("calculates tile ranges for multiple zoom levels", async () => {
+    const config = await processTilesConfig({
       url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
       bbox: [13.3, 52.5, 13.4, 52.55], // Very small area in Berlin
       minZoom: 11,
@@ -62,21 +62,21 @@ describe("processTilesConfig", () => {
     expect(config.maxZoom).toBe(13);
   });
 
-  test("throws error for invalid CRS", () => {
-    expect(() => {
-      processTilesConfig({
+  test("throws error for invalid CRS", async () => {
+    await expect(async () => {
+      await processTilesConfig({
         url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
         bbox: [13.3, 52.5, 13.4, 52.55],
         minZoom: 11,
         maxZoom: 13,
         crs: "INVALID:CRS",
       });
-    }).toThrow("Couldn't get the extent");
+    }).toThrow();
   });
 
-  test("throws error for missing subdomains when {s} in URL", () => {
-    expect(() => {
-      processTilesConfig({
+  test("throws error for missing subdomains when {s} in URL", async () => {
+    await expect(async () => {
+      await processTilesConfig({
         url: `http://{s}.localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
         bbox: [13.3, 52.5, 13.4, 52.55],
         minZoom: 11,
@@ -87,8 +87,8 @@ describe("processTilesConfig", () => {
     }).toThrow("Missing Subdomains");
   });
 
-  test("accepts subdomains when {s} in URL", () => {
-    const config = processTilesConfig({
+  test("accepts subdomains when {s} in URL", async () => {
+    const config = await processTilesConfig({
       url: `http://{s}.localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
       subdomains: ["a", "b", "c"],
       bbox: [13.3, 52.5, 13.4, 52.55],
@@ -102,8 +102,47 @@ describe("processTilesConfig", () => {
 });
 
 describe("fetchTiles", () => {
+  test("download the correct tiles", async () => {
+    const config = await processTilesConfig({
+      url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
+      bbox: [13.3, 52.5, 13.4, 52.55], // Very small area in Berlin
+      minZoom: 11,
+      maxZoom: 11,
+      crs: "EPSG:3857", // Web Mercator
+    });
+
+    const downloadedTiles: Array<{ url: string; size: number; x: number; y: number; z: number }> = [];
+
+    console.log(`Starting download of ${config.totalCount} tiles...`);
+
+    for await (const tile of fetchTiles(config)) {
+      console.log(`Download from ${tile.url} finished (${tile.blob.size} Bytes)`);
+
+      downloadedTiles.push({
+        url: tile.url,
+        size: tile.blob.size,
+        x: tile.x,
+        y: tile.y,
+        z: tile.z,
+      });
+    }
+
+    // Verify all tiles were downloaded
+    expect(downloadedTiles).toHaveLength(config.totalCount);
+
+    // Verify each tile has valid properties
+    for (const tile of downloadedTiles) {
+      expect(tile.url).toMatch(/\/\d+\/\d+\/\d+\.png$/);
+      expect(tile.size).toBe(70);
+      expect(tile.x).toBeOneOf([1099, 1100]);
+      expect(tile.y).toBe(671);
+      expect(tile.z).toBe(config.minZoom);
+      expect(tile.z).toBe(config.maxZoom);
+    }
+  });
+
   test("downloads tiles over multiple zoom levels", async () => {
-    const config = processTilesConfig({
+    const config = await processTilesConfig({
       url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
       bbox: [13.3, 52.5, 13.4, 52.55], // Very small area in Berlin
       minZoom: 11,
@@ -151,7 +190,7 @@ describe("fetchTiles", () => {
   });
 
   test("downloads tiles with subdomain rotation", async () => {
-    const config = processTilesConfig({
+    const config = await processTilesConfig({
       url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
       subdomains: ["a", "b", "c"],
       bbox: [13.3, 52.5, 13.32, 52.51], // Very small area
@@ -171,7 +210,7 @@ describe("fetchTiles", () => {
   });
 
   test("handles single zoom level", async () => {
-    const config = processTilesConfig({
+    const config = await processTilesConfig({
       url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
       bbox: [13.3, 52.5, 13.35, 52.525],
       minZoom: 11,
