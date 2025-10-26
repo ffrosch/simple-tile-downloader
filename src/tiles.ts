@@ -6,10 +6,15 @@ import type {
   UnfetchedTile,
   TileRange,
   FetchTilesConfig,
+  ProcessTilesConfig,
 } from "./types";
 import partial from "lodash.partial";
+import { detectServiceType, processWMTSTilesConfig, generateWMTSUrl } from "./wmts";
 
-export async function processTilesConfig(config: TilesConfig): Promise<FetchTilesConfig> {
+/**
+ * Process XYZ tiles configuration
+ */
+async function processXYZTilesConfig(config: TilesConfig): Promise<FetchTilesConfig> {
   const { crs, bbox, url, subdomains, maxZoom, minZoom } = config;
 
   // Fetch CRS extent from epsg.io
@@ -51,6 +56,21 @@ export async function processTilesConfig(config: TilesConfig): Promise<FetchTile
   };
 }
 
+/**
+ * Process tiles configuration - routes to XYZ or WMTS handler
+ */
+export async function processTilesConfig(config: ProcessTilesConfig): Promise<FetchTilesConfig> {
+  // Detect service type (auto or explicit)
+  const serviceType = await detectServiceType(config.url, config.serviceType);
+
+  // Route to appropriate handler
+  if (serviceType === "wmts") {
+    return processWMTSTilesConfig(config);
+  } else {
+    return processXYZTilesConfig(config);
+  }
+}
+
 export async function fetchTile(
   unfetchedTile: UnfetchedTile
 ): Promise<FetchedTile> {
@@ -86,22 +106,34 @@ export async function* fetchTiles(
   function* generateTileURLs(): Generator<UnfetchedTile, void, unknown> {
     let currentSubdomainIndex = 0;
 
+    // Check if this is WMTS (has _wmtsParams)
+    const isWMTS = "_wmtsParams" in config && config._wmtsParams;
+
     for (let i = 0; i < tileRanges.length; i++) {
       const { minX, maxX, minY, maxY, zoom } = tileRanges[i] as TileRange;
       for (let x = minX; x <= maxX; x++) {
         for (let y = minY; y <= maxY; y++) {
-          let url = urlTemplate
-            .replace("{x}", x.toString())
-            .replace("{y}", y.toString())
-            // TMS has origin at bottom-left, need to invert
-            .replace("{-y}", (Math.pow(2, zoom) - 1 - y).toString())
-            .replace("{z}", zoom.toString())
+          let url: string;
 
-          // Only cycle subdomains if array is not empty
-          if (subdomains && subdomains.length > 0) {
-            currentSubdomainIndex =
-              (currentSubdomainIndex + 1) % subdomains.length;
-            url = url.replace("{s}", subdomains[currentSubdomainIndex] ?? "");
+          if (isWMTS && config._wmtsParams) {
+            // Generate WMTS URL
+            const { layer, format, tileMatrixSet } = config._wmtsParams;
+            url = generateWMTSUrl(urlTemplate, layer, format, tileMatrixSet, zoom, x, y);
+          } else {
+            // Generate XYZ URL (existing logic)
+            url = urlTemplate
+              .replace("{x}", x.toString())
+              .replace("{y}", y.toString())
+              // TMS has origin at bottom-left, need to invert
+              .replace("{-y}", (Math.pow(2, zoom) - 1 - y).toString())
+              .replace("{z}", zoom.toString());
+
+            // Only cycle subdomains if array is not empty
+            if (subdomains && subdomains.length > 0) {
+              currentSubdomainIndex =
+                (currentSubdomainIndex + 1) % subdomains.length;
+              url = url.replace("{s}", subdomains[currentSubdomainIndex] ?? "");
+            }
           }
 
           yield { url, x, y, z: zoom };
@@ -134,6 +166,8 @@ export default class Tiles implements FetchTilesConfig {
   readonly crs;
   readonly totalCount;
   readonly tileRanges;
+  readonly serviceType?;
+  readonly _wmtsParams?;
   fetch;
 
   private constructor(fetchConfig: FetchTilesConfig) {
@@ -146,12 +180,14 @@ export default class Tiles implements FetchTilesConfig {
     this.totalCount = fetchConfig.totalCount;
     this.tileRanges = fetchConfig.tileRanges;
     this.fetch = partial(fetchTiles, fetchConfig);
+    this.serviceType = fetchConfig.serviceType;
+    this._wmtsParams = fetchConfig._wmtsParams;
   }
 
   /**
    * Create a new Tiles instance asynchronously
    */
-  static async create(config: TilesConfig): Promise<Tiles> {
+  static async create(config: ProcessTilesConfig): Promise<Tiles> {
     const fetchConfig = await processTilesConfig(config);
     return new Tiles(fetchConfig);
   }

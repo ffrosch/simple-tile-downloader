@@ -59,11 +59,32 @@ interface SourceConfig extends Source {
 
 export interface TilesConfig extends SourceConfig {
   crs: string;
+  /** Optional: explicitly specify service type (auto-detected if omitted) */
+  serviceType?: 'xyz' | 'wmts';
 }
+
+/**
+ * WMTS-specific configuration extending TilesConfig
+ * TileMatrixSet is automatically matched from the crs parameter
+ */
+export interface WMTSConfig extends TilesConfig {
+  /** Optional: layer identifier (auto-selected if service has single layer) */
+  layer?: string;
+  /** Optional: image format (defaults to png > jpeg > webp > first available) */
+  format?: string;
+}
+
+export type ProcessTilesConfig = TilesConfig | WMTSConfig;
 
 export interface FetchTilesConfig extends TilesConfig {
   totalCount: number;
   tileRanges: TileRange[];
+  /** Internal: WMTS parameters for URL generation */
+  _wmtsParams?: {
+    layer: string;
+    format: string;
+    tileMatrixSet: string;
+  };
 }
 
 export interface UnfetchedTile {
@@ -75,4 +96,55 @@ export interface UnfetchedTile {
 
 export interface FetchedTile extends UnfetchedTile {
   blob: Blob;
+}
+
+/**
+ * WMTS GetCapabilities structures
+ */
+
+/**
+ * Parsed WMTS GetCapabilities document
+ */
+export interface WMTSCapabilities {
+  layers: Map<string, WMTSLayerInfo>;
+  tileMatrixSets: Map<string, WMTSTileMatrixSet>;
+  formats: string[];
+  serviceIdentification: {
+    title: string;
+    abstract?: string;
+  };
+}
+
+/**
+ * Information about a WMTS layer from GetCapabilities
+ */
+export interface WMTSLayerInfo {
+  identifier: string;
+  title: string;
+  formats: string[];
+  tileMatrixSetLinks: Array<{
+    tileMatrixSet: string;
+    limits?: Map<string, TileMatrixSetLimits>;
+  }>;
+  boundingBox?: Extent;
+}
+
+/**
+ * Tile range constraints for a specific zoom level (TileMatrix)
+ */
+export interface TileMatrixSetLimits {
+  tileMatrix: string;
+  minTileRow: number;
+  maxTileRow: number;
+  minTileCol: number;
+  maxTileCol: number;
+}
+
+/**
+ * WMTS TileMatrixSet definition
+ */
+export interface WMTSTileMatrixSet {
+  identifier: string;
+  crs: string;
+  extent?: Extent;
 }
