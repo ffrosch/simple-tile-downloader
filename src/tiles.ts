@@ -133,27 +133,34 @@ function* generateTileURLs({
   subdomains,
 }: FetchTilesConfig): Generator<UnfetchedTile, void, unknown> {
   let currentSubdomainIndex = 0;
+  const replaceUrlXYZS = (x: number, y: number, z: number) => {
+    const processedUrl = url
+      .replace("{x}", x.toString())
+      .replace("{y}", y.toString())
+      // TMS has origin at bottom-left, need to invert
+      .replace("{-y}", (Math.pow(2, z) - 1 - y).toString())
+      .replace("{z}", z.toString());
 
-  for (const { zoom, tileRange } of tileRanges) {
+    // Only cycle subdomains if array is not empty
+    if (subdomains && subdomains.length > 0) {
+      currentSubdomainIndex = (currentSubdomainIndex + 1) % subdomains.length;
+      return processedUrl.replace("{s}", subdomains[currentSubdomainIndex] ?? "");
+    }
+
+    return processedUrl;
+  };
+
+  for (const { zoom: z, tileRange } of tileRanges) {
     const { minX, maxX, minY, maxY } = tileRange;
-
     for (let x = minX; x <= maxX; x++) {
       for (let y = minY; y <= maxY; y++) {
-        // Generate XYZ URL (existing logic)
-        url = url
-          .replace("{x}", x.toString())
-          .replace("{y}", y.toString())
-          // TMS has origin at bottom-left, need to invert
-          .replace("{-y}", (Math.pow(2, zoom) - 1 - y).toString())
-          .replace("{z}", zoom.toString());
-
-        // Only cycle subdomains if array is not empty
-        if (subdomains && subdomains.length > 0) {
-          currentSubdomainIndex = (currentSubdomainIndex + 1) % subdomains.length;
-          url = url.replace("{s}", subdomains[currentSubdomainIndex] ?? "");
-        }
-
-        yield { url, x, y, z: zoom };
+        const unfetchedTile: UnfetchedTile = {
+          url: replaceUrlXYZS(x, y, z),
+          x,
+          y,
+          z,
+        };
+        yield unfetchedTile;
       }
     }
   }
