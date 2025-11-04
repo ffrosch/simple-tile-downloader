@@ -1,3 +1,7 @@
+import type { Options as WMTSOptions } from "ol/source/WMTS";
+import type { Options as XYZOptions } from "ol/source/XYZ";
+import type TileRange from "ol/TileRange";
+
 export type Extent = [number, number, number, number];
 
 /**
@@ -24,7 +28,6 @@ export interface CRSCacheEntry {
   name: string;
 }
 
-
 /**
  * XYZ Tile Grid configuration
  */
@@ -36,55 +39,43 @@ export interface XYZTileGrid {
   resolutions: number[];
 }
 
-export interface TileRange {
-  zoom: number;
-  minX: number;
-  maxX: number;
-  minY: number;
-  maxY: number;
-  count: number;
-}
-
 export interface Source {
   url: string;
   subdomains?: string[];
 }
 
-interface SourceConfig extends Source {
+export interface TilesConfig extends Source {
   /** Must be WGS84 */
   bbox: Extent;
   minZoom: number;
   maxZoom: number;
-}
-
-export interface TilesConfig extends SourceConfig {
   crs: string;
-  /** Optional: explicitly specify service type (auto-detected if omitted) */
-  serviceType?: 'xyz' | 'wmts';
 }
 
-/**
- * WMTS-specific configuration extending TilesConfig
- * TileMatrixSet is automatically matched from the crs parameter
- */
-export interface WMTSConfig extends TilesConfig {
-  /** Optional: layer identifier (auto-selected if service has single layer) */
-  layer?: string;
-  /** Optional: image format (defaults to png > jpeg > webp > first available) */
-  format?: string;
+export interface WMTSConfig {
+  config: {
+    bbox: Extent;
+    minZoom: number;
+    maxZoom: number;
+  };
+  options: WMTSOptions;
 }
 
-export type ProcessTilesConfig = TilesConfig | WMTSConfig;
+export type TileRanges = Array<{
+  zoom: number;
+  count: number;
+  tileRange: TileRange;
+}>;
+
+export interface TileUrls {
+  zoom: number;
+  count: number;
+  urls: string[];
+};
 
 export interface FetchTilesConfig extends TilesConfig {
   totalCount: number;
-  tileRanges: TileRange[];
-  /** Internal: WMTS parameters for URL generation */
-  _wmtsParams?: {
-    layer: string;
-    format: string;
-    tileMatrixSet: string;
-  };
+  tileRanges: TileRanges;
 }
 
 export interface UnfetchedTile {
@@ -147,4 +138,28 @@ export interface WMTSTileMatrixSet {
   identifier: string;
   crs: string;
   extent?: Extent;
+}
+
+export interface Selection {
+  bbox: Extent;
+  minZoom: number;
+  maxZoom: number;
+}
+
+export interface customWMTSOptions extends Selection, WMTSOptions {}
+
+export interface customXYZOptions extends Selection, XYZOptions {
+  bbox: Extent;
+  minZoom: number;
+  maxZoom: number;
+}
+
+export interface OptionsFromCapabilities {
+  layer: string;
+  matrixSet?: string;
+  projection?: string;
+  requestEncoding?: string;
+  style?: string;
+  format?: string;
+  crossOrigin?: string | null | undefined;
 }

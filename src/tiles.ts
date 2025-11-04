@@ -1,53 +1,46 @@
-import { getCRSExtent, containsExtent } from "./crs";
-import { createXYZTileGrid, getTileRangeForExtentAndZ } from "./tilegrid";
-import type {
-  TilesConfig,
-  FetchedTile,
-  UnfetchedTile,
-  TileRange,
-  FetchTilesConfig,
-  ProcessTilesConfig,
-} from "./types";
 import partial from "lodash.partial";
-import { detectServiceType, processWMTSTilesConfig, generateWMTSUrl } from "./wmts";
+import { containsExtent } from "ol/extent";
+import { get as getProjection, transformExtent } from "ol/proj";
+import type { TileImage } from "ol/source";
+import { createXYZ } from "ol/tilegrid";
+import type {
+  FetchedTile,
+  FetchTilesConfig,
+  Selection,
+  TileRanges,
+  TilesConfig,
+  TileUrls,
+  UnfetchedTile,
+  WMTSConfig,
+} from "./types";
 
-/**
- * Process XYZ tiles configuration
- */
 async function processXYZTilesConfig(config: TilesConfig): Promise<FetchTilesConfig> {
   const { crs, bbox, url, subdomains, maxZoom, minZoom } = config;
+  const extent = getProjection(crs)?.getExtent();
 
-  // Fetch CRS extent from epsg.io
-  const extent = await getCRSExtent(crs);
-
-  if (!containsExtent(extent, bbox)) {
-    throw new Error(
-      `The supplied bounding box exceeds the extent of ${crs}`
-    );
-  }
-
+  // Fail early
   if (url.includes("{s}") && !subdomains) {
-    throw new Error(
-      `Missing Subdomains argument for url ${url}`
-    );
+    throw new Error(`Missing Subdomains argument for url ${url}`);
+  }
+  if (!extent) {
+    throw new Error(`Couldn't get the extent for ${crs}`);
+  } else if (!containsExtent(extent, bbox)) {
+    throw new Error(`The supplied bounding box exceeds the extent of ${crs}`);
   }
 
-  const tileGrid = createXYZTileGrid(extent, minZoom, maxZoom);
+  // Calculate TileRanges
+  let totalCount: number = 0;
+  const tileRanges: TileRanges = [];
 
-  const tileRanges: TileRange[] = [];
+  const tileGrid = createXYZ({ extent, minZoom, maxZoom });
+  const targetCrsBbox = transformExtent(bbox, "EPSG:4326", crs);
+
   for (let zoom = minZoom; zoom <= maxZoom; zoom++) {
-    const tileRange = getTileRangeForExtentAndZ(
-      bbox,
-      "EPSG:4326",
-      crs,
-      zoom,
-      tileGrid
-    );
-    tileRanges.push(tileRange);
+    const tileRange = tileGrid.getTileRangeForExtentAndZ(targetCrsBbox, zoom);
+    const count = tileRange.getHeight() * tileRange.getWidth();
+    tileRanges.push({ zoom, count, tileRange });
+    totalCount += count;
   }
-  const totalCount = tileRanges
-    .map((range) => range.count)
-    .reduce((previousCount, currentCount) => previousCount + currentCount);
 
   return {
     ...config,
@@ -56,24 +49,62 @@ async function processXYZTilesConfig(config: TilesConfig): Promise<FetchTilesCon
   };
 }
 
-/**
- * Process tiles configuration - routes to XYZ or WMTS handler
- */
-export async function processTilesConfig(config: ProcessTilesConfig): Promise<FetchTilesConfig> {
-  // Detect service type (auto or explicit)
-  const serviceType = await detectServiceType(config.url, config.serviceType);
+async function processWMTSTilesConfig({
+  config,
+  options,
+}: WMTSConfig): Promise<FetchTilesConfig> {
+  const { bbox, minZoom, maxZoom } = config;
+  const crs = getProjection(options.projection)?.getCode();
+  const extent = getProjection(options.projection)?.getExtent();
 
-  // Route to appropriate handler
-  if (serviceType === "wmts") {
+  // Fail early
+  if (!options.url && !options.urls) {
+    throw new Error("Missing URL");
+  } else if (!crs) {
+    throw new Error("Couldn't get a valid EPSG-code");
+  } else if (!extent) {
+    throw new Error(`Couldn't get the extent for ${crs}`);
+  } else if (!containsExtent(extent, bbox)) {
+    throw new Error(`The supplied bounding box exceeds the extent of ${crs}`);
+  }
+
+  // Calculate TileRanges
+  let totalCount: number = 0;
+  const tileRanges: TileRanges = [];
+
+  const url = options.url || (options.urls ? options.urls[0] ?? "" : "");
+  const tileGrid = options.tileGrid;
+  const targetCrsBbox = transformExtent(bbox, "EPSG:4326", crs);
+
+  for (let zoom = minZoom; zoom <= maxZoom; zoom++) {
+    const tileRange = tileGrid.getTileRangeForExtentAndZ(targetCrsBbox, zoom);
+    const count = tileRange.getHeight() * tileRange.getWidth();
+    tileRanges.push({ zoom, count, tileRange });
+    totalCount += count;
+  }
+
+  return {
+    crs,
+    bbox,
+    minZoom,
+    maxZoom,
+    totalCount,
+    tileRanges,
+    url,
+  };
+}
+
+export async function processTilesConfig(
+  config: TilesConfig | WMTSConfig
+): Promise<FetchTilesConfig> {
+  if ("options" in config) {
     return processWMTSTilesConfig(config);
   } else {
     return processXYZTilesConfig(config);
   }
 }
 
-export async function fetchTile(
-  unfetchedTile: UnfetchedTile
-): Promise<FetchedTile> {
+export async function fetchTile(unfetchedTile: UnfetchedTile): Promise<FetchedTile> {
   return fetch(unfetchedTile.url)
     .then((response) => {
       if (response.ok) {
@@ -96,53 +127,78 @@ export async function fetchTile(
     });
 }
 
+function* generateTileURLs({
+  url,
+  tileRanges,
+  subdomains,
+}: FetchTilesConfig): Generator<UnfetchedTile, void, unknown> {
+  let currentSubdomainIndex = 0;
+
+  for (const { zoom, tileRange } of tileRanges) {
+    const { minX, maxX, minY, maxY } = tileRange;
+
+    for (let x = minX; x <= maxX; x++) {
+      for (let y = minY; y <= maxY; y++) {
+        // Generate XYZ URL (existing logic)
+        url = url
+          .replace("{x}", x.toString())
+          .replace("{y}", y.toString())
+          // TMS has origin at bottom-left, need to invert
+          .replace("{-y}", (Math.pow(2, zoom) - 1 - y).toString())
+          .replace("{z}", zoom.toString());
+
+        // Only cycle subdomains if array is not empty
+        if (subdomains && subdomains.length > 0) {
+          currentSubdomainIndex = (currentSubdomainIndex + 1) % subdomains.length;
+          url = url.replace("{s}", subdomains[currentSubdomainIndex] ?? "");
+        }
+
+        yield { url, x, y, z: zoom };
+      }
+    }
+  }
+}
+
+export function* getTileUrls(
+  source: TileImage,
+  options: Selection
+): Generator<TileUrls, void, unknown> {
+  const tilegrid = source.getTileGrid();
+  const getUrl = source.getTileUrlFunction();
+  const extent = tilegrid?.getExtent();
+  const projection = source.getProjection();
+  const bbox = transformExtent(options.bbox, "EPSG:4326", projection?.getCode());
+
+  if (!extent) throw new Error("No extent found");
+  if (!projection) throw new Error("No projection specified");
+  if (!containsExtent(extent, options.bbox)) throw new Error("BBOX exceeds valid bounds");
+  if (!tilegrid) throw new Error("No tilegrid found");
+
+  for (let zoom = options.minZoom; zoom <= options.maxZoom; zoom++) {
+    let count: number = 0;
+    const urls: string[] = [];
+
+    tilegrid.forEachTileCoord(bbox, zoom, (tilecoord) => {
+      const url = getUrl(tilecoord, zoom, projection);
+      if (url) {
+        urls.push(url);
+        count++;
+      }
+    });
+
+    const tileUrls: TileUrls = { zoom, count, urls };
+    yield tileUrls;
+  }
+}
+
 export async function* fetchTiles(
   config: FetchTilesConfig,
   options: { maxParallelDownloads: number } = { maxParallelDownloads: 6 }
 ): AsyncGenerator<FetchedTile, void, unknown> {
-  const { tileRanges, url: urlTemplate, subdomains } = config;
   const pendingDownloads = new Set<Promise<FetchedTile>>();
+  const tileUrls = generateTileURLs(config);
 
-  function* generateTileURLs(): Generator<UnfetchedTile, void, unknown> {
-    let currentSubdomainIndex = 0;
-
-    // Check if this is WMTS (has _wmtsParams)
-    const isWMTS = "_wmtsParams" in config && config._wmtsParams;
-
-    for (let i = 0; i < tileRanges.length; i++) {
-      const { minX, maxX, minY, maxY, zoom } = tileRanges[i] as TileRange;
-      for (let x = minX; x <= maxX; x++) {
-        for (let y = minY; y <= maxY; y++) {
-          let url: string;
-
-          if (isWMTS && config._wmtsParams) {
-            // Generate WMTS URL
-            const { layer, format, tileMatrixSet } = config._wmtsParams;
-            url = generateWMTSUrl(urlTemplate, layer, format, tileMatrixSet, zoom, x, y);
-          } else {
-            // Generate XYZ URL (existing logic)
-            url = urlTemplate
-              .replace("{x}", x.toString())
-              .replace("{y}", y.toString())
-              // TMS has origin at bottom-left, need to invert
-              .replace("{-y}", (Math.pow(2, zoom) - 1 - y).toString())
-              .replace("{z}", zoom.toString());
-
-            // Only cycle subdomains if array is not empty
-            if (subdomains && subdomains.length > 0) {
-              currentSubdomainIndex =
-                (currentSubdomainIndex + 1) % subdomains.length;
-              url = url.replace("{s}", subdomains[currentSubdomainIndex] ?? "");
-            }
-          }
-
-          yield { url, x, y, z: zoom };
-        }
-      }
-    }
-  }
-
-  for (const unfetchedTile of generateTileURLs()) {
+  for (const unfetchedTile of tileUrls) {
     const tile = fetchTile(unfetchedTile);
     pendingDownloads.add(tile);
     tile.then(() => pendingDownloads.delete(tile));
@@ -166,8 +222,6 @@ export default class Tiles implements FetchTilesConfig {
   readonly crs;
   readonly totalCount;
   readonly tileRanges;
-  readonly serviceType?;
-  readonly _wmtsParams?;
   fetch;
 
   private constructor(fetchConfig: FetchTilesConfig) {
@@ -180,14 +234,12 @@ export default class Tiles implements FetchTilesConfig {
     this.totalCount = fetchConfig.totalCount;
     this.tileRanges = fetchConfig.tileRanges;
     this.fetch = partial(fetchTiles, fetchConfig);
-    this.serviceType = fetchConfig.serviceType;
-    this._wmtsParams = fetchConfig._wmtsParams;
   }
 
   /**
    * Create a new Tiles instance asynchronously
    */
-  static async create(config: ProcessTilesConfig): Promise<Tiles> {
+  static async create(config: TilesConfig | WMTSConfig): Promise<Tiles> {
     const fetchConfig = await processTilesConfig(config);
     return new Tiles(fetchConfig);
   }
