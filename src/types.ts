@@ -1,6 +1,8 @@
+import type { UrlLike } from "ol/source/ImageTile";
 import type { Options as WMTSOptions } from "ol/source/WMTS";
 import type { Options as XYZOptions } from "ol/source/XYZ";
 import type TileRange from "ol/TileRange";
+import type { Extent as OlExtent } from "ol/extent";
 
 export type Extent = [number, number, number, number];
 
@@ -46,10 +48,10 @@ export interface Source {
 
 export interface TilesConfig extends Source {
   /** Must be WGS84 */
+  crs?: string;
   bbox: Extent;
   minZoom: number;
   maxZoom: number;
-  crs: string;
 }
 
 export interface WMTSConfig {
@@ -62,7 +64,7 @@ export interface WMTSConfig {
 }
 
 export type TileRanges = Array<{
-  zoom: number;
+  z: number;
   count: number;
   tileRange: TileRange;
 }>;
@@ -79,13 +81,18 @@ export interface FetchTilesConfig extends TilesConfig {
 }
 
 export interface UnfetchedTile {
-  url: string;
   x: number;
   y: number;
   z: number;
+  controller: AbortController;
+  load: () => Promise<FetchedTile>;
 }
 
-export interface FetchedTile extends UnfetchedTile {
+export interface FetchedTile {
+  x: number;
+  y: number;
+  z: number;
+  url: string;
   blob: Blob;
 }
 
@@ -162,4 +169,15 @@ export interface OptionsFromCapabilities {
   style?: string;
   format?: string;
   crossOrigin?: string | null | undefined;
+}
+
+export interface TileCollection {
+  tileLoaders: Generator<UnfetchedTile, void, unknown>;
+  tileRanges: TileRanges;
+  totalCount: number;
+  minZoom: number;
+  maxZoom: number;
+  projection?: string;
+  extent: OlExtent;
+  url: UrlLike;
 }

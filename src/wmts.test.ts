@@ -1,7 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { getOptions, getWMTSUrls } from "./wmts";
+import { getOptions, getWMTSUrls, processWMTSTilesConfig } from "./wmts";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import { processTilesConfig } from "./tiles";
 import { Extent } from "./types";
 
 const CAPABILITIES_PATH = "../tests/fixtures/wmts-capabilities.xml";
@@ -28,7 +27,8 @@ beforeAll(async () => {
   });
 
   // Override fetch with our mock that works correctly
-  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  // @ts-ignore
+  globalThis.fetch = async (input: RequestInfo | URL): Promise<Response> => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     const urlObj = new URL(url);
     const params = urlObj.searchParams;
@@ -80,7 +80,7 @@ describe("processWMTSTilesConfig", () => {
       maxZoom: 12,
     };
     const options = await getOptions(url, { layer, matrixSet });
-    const result = await processTilesConfig({ config, options });
+    const result = await processWMTSTilesConfig({ config, options });
 
     expect(result.crs).toBe(matrixSet);
   });

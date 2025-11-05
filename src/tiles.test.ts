@@ -1,5 +1,7 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { processTilesConfig, fetchTiles } from "./tiles";
+import { fetchTiles } from "./tiles";
+import xyz from "./xyz";
+import EXTENT from "../tests/fixtures/extent";
 
 // Mock tile server setup
 let server: ReturnType<typeof Bun.serve> | null = null;
@@ -38,74 +40,21 @@ afterAll(() => {
   server?.stop();
 });
 
-describe("processTilesConfig", () => {
-  test("calculates tile ranges for multiple zoom levels", async () => {
-    const config = await processTilesConfig({
-      url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
-      bbox: [13.3, 52.5, 13.4, 52.55], // Very small area in Berlin
-      minZoom: 11,
-      maxZoom: 13,
-      crs: "EPSG:3857", // Web Mercator
-    });
-
-    expect(config.totalCount).toBeGreaterThan(0);
-    expect(config.tileRanges).toHaveLength(3); // Zoom levels 11, 12, 13
-    expect(config.minZoom).toBe(11);
-    expect(config.maxZoom).toBe(13);
-  });
-
-  test("throws error for invalid CRS", async () => {
-    await expect(async () => {
-      await processTilesConfig({
+describe("fetchTiles", async () => {
+  test("download correct tiles for one zoom level", async () => {
+    const tileCollection = xyz(
+      {
         url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
-        bbox: [13.3, 52.5, 13.4, 52.55],
-        minZoom: 11,
-        maxZoom: 13,
-        crs: "INVALID:CRS",
-      });
-    }).toThrow();
-  });
-
-  test("throws error for missing subdomains when {s} in URL", async () => {
-    await expect(async () => {
-      await processTilesConfig({
-        url: `http://{s}.localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
-        bbox: [13.3, 52.5, 13.4, 52.55],
         minZoom: 11,
         maxZoom: 11,
-        crs: "EPSG:3857",
-        // Missing subdomains
-      });
-    }).toThrow("Missing Subdomains");
-  });
-
-  test("accepts subdomains when {s} in URL", async () => {
-    const config = await processTilesConfig({
-      url: `http://{s}.localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
-      subdomains: ["a", "b", "c"],
-      bbox: [13.3, 52.5, 13.4, 52.55],
-      minZoom: 11,
-      maxZoom: 11,
-      crs: "EPSG:3857",
-    });
-
-    expect(config.subdomains).toEqual(["a", "b", "c"]);
-  });
-});
-
-describe("fetchTiles", () => {
-  test("download correct tiles for one zoom level", async () => {
-    const config = await processTilesConfig({
-      url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
-      bbox: [13.3, 52.5, 13.4, 52.55], // Very small area in Berlin
-      minZoom: 11,
-      maxZoom: 11,
-      crs: "EPSG:3857", // Web Mercator
-    });
+        projection: "EPSG:3857",
+      },
+      EXTENT
+    )
     
-    console.log(`Starting download of ${config.totalCount} tiles...`);
+    console.log(`Starting download of ${tileCollection.totalCount} tiles...`);
     const downloadedTiles: Array<{ url: string; size: number; x: number; y: number; z: number }> = [];
-    for await (const tile of fetchTiles(config)) {
+    for await (const tile of fetchTiles(tileCollection)) {
       downloadedTiles.push({
         url: tile.url,
         size: tile.blob.size,
@@ -117,9 +66,9 @@ describe("fetchTiles", () => {
     }
 
     // All tiles were downloaded
-    expect(downloadedTiles).toHaveLength(config.totalCount);
+    expect(downloadedTiles).toHaveLength(tileCollection.totalCount);
     // URLs are unique
-    expect(new Set(downloadedTiles.map(tile => tile.url))).toHaveLength(config.totalCount);
+    expect(new Set(downloadedTiles.map(tile => tile.url))).toHaveLength(tileCollection.totalCount);
     // URLs were generated with the correct z-values
     expect(new Set(downloadedTiles.map(tile => Number(tile.url.split('/').at(-3))))).toEqual(new Set([11]))
     // URLs were generated with the correct x-values
@@ -133,22 +82,24 @@ describe("fetchTiles", () => {
       expect(tile.size).toBe(70);
       expect(tile.x).toBeOneOf([1099, 1100]);
       expect(tile.y).toBe(671);
-      expect(tile.z).toBe(config.minZoom);
-      expect(tile.z).toBe(config.maxZoom);
+      expect(tile.z).toBe(tileCollection.minZoom);
+      expect(tile.z).toBe(tileCollection.maxZoom);
     }
   });
 
   test("download correct tiles for multiple zoom levels", async () => {
-    const config = await processTilesConfig({
-      url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
-      bbox: [13.3, 52.5, 13.4, 52.55], // Very small area in Berlin
-      minZoom: 11,
-      maxZoom: 13,
-      crs: "EPSG:3857", // Web Mercator
-    });
+    const tileCollection = xyz(
+      {
+        url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
+        minZoom: 11,
+        maxZoom: 13,
+        projection: "EPSG:3857",
+      },
+      EXTENT
+    )
 
     const downloadedTiles: Array<{ url: string; size: number; x: number; y: number; z: number }> = [];
-    for await (const tile of fetchTiles(config)) {
+    for await (const tile of fetchTiles(tileCollection)) {
       downloadedTiles.push({
         url: tile.url,
         size: tile.blob.size,
@@ -159,11 +110,11 @@ describe("fetchTiles", () => {
     }
 
     // All tiles were downloaded
-    expect(downloadedTiles).toHaveLength(config.totalCount);
+    expect(downloadedTiles).toHaveLength(tileCollection.totalCount);
     // Total size of downloaded tiles is correct
     expect(downloadedTiles.reduce((prevSize, tile) => prevSize + tile.size, 0)).toBe(downloadedTiles.length * 70);
     // URLs are unique
-    expect(new Set(downloadedTiles.map(tile => tile.url))).toHaveLength(config.totalCount);
+    expect(new Set(downloadedTiles.map(tile => tile.url))).toHaveLength(tileCollection.totalCount);
     // URLs were generated with the correct z-values
     expect(new Set(downloadedTiles.map(tile => Number(tile.url.split('/').at(-3))))).toEqual(new Set([11, 12, 13]))
     // URLs were generated with the correct x-values
@@ -177,46 +128,28 @@ describe("fetchTiles", () => {
       expect(tile.size).toBe(70);
       expect(tile.x).toBeGreaterThanOrEqual(0);
       expect(tile.y).toBeGreaterThanOrEqual(0);
-      expect(tile.z).toBeGreaterThanOrEqual(config.minZoom);
-      expect(tile.z).toBeLessThanOrEqual(config.maxZoom);
+      expect(tile.z).toBeGreaterThanOrEqual(tileCollection.minZoom);
+      expect(tile.z).toBeLessThanOrEqual(tileCollection.maxZoom);
     }
-  });
-
-  test("download tiles with subdomain rotation", async () => {
-    const config = await processTilesConfig({
-      url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
-      subdomains: ["a", "b", "c"],
-      bbox: [13.3, 52.5, 13.32, 52.51], // Very small area
-      minZoom: 12,
-      maxZoom: 12,
-      crs: "EPSG:3857",
-    });
-
-    const tiles: string[] = [];
-    for await (const tile of fetchTiles(config)) {
-      tiles.push(tile.url);
-      expect(tile.blob.type).toBe("image/png");
-    }
-
-    // Verify we got tiles
-    expect(tiles.length).toBeGreaterThan(0);
   });
 
   test("handles single zoom level", async () => {
-    const config = await processTilesConfig({
-      url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
-      bbox: [13.3, 52.5, 13.35, 52.525],
-      minZoom: 11,
-      maxZoom: 11, // Single zoom level
-      crs: "EPSG:3857",
-    });
+    const tileCollection = xyz(
+      {
+        url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
+        minZoom: 11,
+        maxZoom: 11,
+        projection: "EPSG:3857",
+      },
+      EXTENT
+    );
 
     const tiles: Array<{ z: number }> = [];
-    for await (const tile of fetchTiles(config)) {
+    for await (const tile of fetchTiles(tileCollection)) {
       tiles.push({ z: tile.z });
     }
 
-    expect(tiles.length).toBe(config.totalCount);
+    expect(tiles.length).toBe(tileCollection.totalCount);
     expect(tiles.every((t) => t.z === 11)).toBe(true);
   });
 });
