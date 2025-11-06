@@ -1,7 +1,7 @@
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { fetchTiles } from "./tiles";
-import xyz from "./xyz";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import EXTENT from "../tests/fixtures/extent";
+import { fetchTiles } from "./tiles";
+import makeXYZTileCollection from "./xyz";
 
 // Mock tile server setup
 let server: ReturnType<typeof Bun.serve> | null = null;
@@ -40,20 +40,29 @@ afterAll(() => {
   server?.stop();
 });
 
-describe("fetchTiles", async () => {
+describe("fetch XYZ tiles", async () => {
   test("download correct tiles for one zoom level", async () => {
-    const tileCollection = xyz(
+    const tileCollection = makeXYZTileCollection(
       {
         url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
-        minZoom: 11,
-        maxZoom: 11,
         projection: "EPSG:3857",
       },
-      EXTENT
-    )
-    
+      {
+        minZoom: 11,
+        maxZoom: 11,
+        targetExtent: EXTENT.extent,
+        targetProjection: EXTENT.projection,
+      }
+    );
+
     console.log(`Starting download of ${tileCollection.totalCount} tiles...`);
-    const downloadedTiles: Array<{ url: string; size: number; x: number; y: number; z: number }> = [];
+    const downloadedTiles: Array<{
+      url: string;
+      size: number;
+      x: number;
+      y: number;
+      z: number;
+    }> = [];
     for await (const tile of fetchTiles(tileCollection)) {
       downloadedTiles.push({
         url: tile.url,
@@ -68,13 +77,23 @@ describe("fetchTiles", async () => {
     // All tiles were downloaded
     expect(downloadedTiles).toHaveLength(tileCollection.totalCount);
     // URLs are unique
-    expect(new Set(downloadedTiles.map(tile => tile.url))).toHaveLength(tileCollection.totalCount);
+    expect(new Set(downloadedTiles.map((tile) => tile.url))).toHaveLength(
+      tileCollection.totalCount
+    );
     // URLs were generated with the correct z-values
-    expect(new Set(downloadedTiles.map(tile => Number(tile.url.split('/').at(-3))))).toEqual(new Set([11]))
+    expect(
+      new Set(downloadedTiles.map((tile) => Number(tile.url.split("/").at(-3))))
+    ).toEqual(new Set([11]));
     // URLs were generated with the correct x-values
-    expect(new Set(downloadedTiles.map(tile => Number(tile.url.split('/').at(-2))))).toEqual(new Set([1099, 1100]))
+    expect(
+      new Set(downloadedTiles.map((tile) => Number(tile.url.split("/").at(-2))))
+    ).toEqual(new Set([1099, 1100]));
     // URLs were generated with the correct y-values
-    expect(new Set(downloadedTiles.map(tile => Number(tile.url.split('/').at(-1)?.split('.')[0])))).toEqual(new Set([671]))
+    expect(
+      new Set(
+        downloadedTiles.map((tile) => Number(tile.url.split("/").at(-1)?.split(".")[0]))
+      )
+    ).toEqual(new Set([671]));
 
     // Verify each tile has valid properties
     for (const tile of downloadedTiles) {
@@ -88,17 +107,26 @@ describe("fetchTiles", async () => {
   });
 
   test("download correct tiles for multiple zoom levels", async () => {
-    const tileCollection = xyz(
+    const tileCollection = makeXYZTileCollection(
       {
         url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
-        minZoom: 11,
-        maxZoom: 13,
         projection: "EPSG:3857",
       },
-      EXTENT
-    )
+      {
+        minZoom: 11,
+        maxZoom: 13,
+        targetExtent: EXTENT.extent,
+        targetProjection: EXTENT.projection,
+      }
+    );
 
-    const downloadedTiles: Array<{ url: string; size: number; x: number; y: number; z: number }> = [];
+    const downloadedTiles: Array<{
+      url: string;
+      size: number;
+      x: number;
+      y: number;
+      z: number;
+    }> = [];
     for await (const tile of fetchTiles(tileCollection)) {
       downloadedTiles.push({
         url: tile.url,
@@ -112,15 +140,27 @@ describe("fetchTiles", async () => {
     // All tiles were downloaded
     expect(downloadedTiles).toHaveLength(tileCollection.totalCount);
     // Total size of downloaded tiles is correct
-    expect(downloadedTiles.reduce((prevSize, tile) => prevSize + tile.size, 0)).toBe(downloadedTiles.length * 70);
+    expect(downloadedTiles.reduce((prevSize, tile) => prevSize + tile.size, 0)).toBe(
+      downloadedTiles.length * 70
+    );
     // URLs are unique
-    expect(new Set(downloadedTiles.map(tile => tile.url))).toHaveLength(tileCollection.totalCount);
+    expect(new Set(downloadedTiles.map((tile) => tile.url))).toHaveLength(
+      tileCollection.totalCount
+    );
     // URLs were generated with the correct z-values
-    expect(new Set(downloadedTiles.map(tile => Number(tile.url.split('/').at(-3))))).toEqual(new Set([11, 12, 13]))
+    expect(
+      new Set(downloadedTiles.map((tile) => Number(tile.url.split("/").at(-3))))
+    ).toEqual(new Set([11, 12, 13]));
     // URLs were generated with the correct x-values
-    expect(new Set(downloadedTiles.map(tile => Number(tile.url.split('/').at(-2))))).toEqual(new Set([1099, 1100, 2199, 2200, 4398, 4399, 4400]))
+    expect(
+      new Set(downloadedTiles.map((tile) => Number(tile.url.split("/").at(-2))))
+    ).toEqual(new Set([1099, 1100, 2199, 2200, 4398, 4399, 4400]));
     // URLs were generated with the correct y-values
-    expect(new Set(downloadedTiles.map(tile => Number(tile.url.split('/').at(-1)?.split('.')[0])))).toEqual(new Set([671, 1342, 1343, 2685, 2686, 2687]))
+    expect(
+      new Set(
+        downloadedTiles.map((tile) => Number(tile.url.split("/").at(-1)?.split(".")[0]))
+      )
+    ).toEqual(new Set([671, 1342, 1343, 2685, 2686, 2687]));
 
     // Verify each tile has valid properties
     for (const tile of downloadedTiles) {
@@ -134,14 +174,17 @@ describe("fetchTiles", async () => {
   });
 
   test("handles single zoom level", async () => {
-    const tileCollection = xyz(
+    const tileCollection = makeXYZTileCollection(
       {
         url: `http://localhost:${TEST_PORT}/{z}/{x}/{y}.png`,
-        minZoom: 11,
-        maxZoom: 11,
         projection: "EPSG:3857",
       },
-      EXTENT
+      {
+        minZoom: 11,
+        maxZoom: 11,
+        targetExtent: EXTENT.extent,
+        targetProjection: EXTENT.projection,
+      }
     );
 
     const tiles: Array<{ z: number }> = [];

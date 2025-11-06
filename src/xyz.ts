@@ -1,166 +1,64 @@
-import partial from "lodash.partial";
-import { transformExtent, type ProjectionLike } from "ol/proj";
-import type { LoaderOptions } from "ol/source/DataTile";
-import type { Options as OlOptions, UrlGetter, UrlLike } from "ol/source/ImageTile";
+import type { Options as OlOptions, UrlLike } from "ol/source/ImageTile";
 import ImageTile from "ol/source/ImageTile";
-import type { TileGrid } from "ol/tilegrid";
 import { expandUrl, pickUrl, renderXYZTemplate } from "ol/uri.js";
+import { makeGeneratorFromTileLoader, makeTileCollectionFromSource, makeTileLoader } from "./tiles";
 import type {
-  Extent,
   FetchedTile,
   TileCollection,
-  TileRanges,
-  UnfetchedTile,
+  TileCollectionOptions
 } from "./types";
 
-interface BaseOptions
-  extends Omit<
-    OlOptions,
-    "url" | "loader" | "tileGrid" | "minZoom" | "maxZoom" | "maxResolution"
-  > {
+type SourceOptions = Omit<OlOptions, "url" | "loader"> & {
   url: UrlLike;
-}
-
-interface TileGridOptions extends BaseOptions {
-  tileGrid: TileGrid;
-}
-
-interface MinMaxZoomOptions extends BaseOptions {
-  minZoom: number;
-  maxZoom: number;
-  maxResolution?: number;
-}
-
-type Options = MinMaxZoomOptions | TileGridOptions;
-
-interface OptionsExtent {
-  extent: Extent;
-  projection?: ProjectionLike;
-}
+};
 
 export default function makeTileCollection(
-  options: Options,
-  optionsExtent: OptionsExtent
+  sourceOptions: SourceOptions,
+  tileCollectionOptions: TileCollectionOptions
 ): TileCollection {
-  const hasMinMaxZoom = (x: Options): x is MinMaxZoomOptions =>
-    "minZoom" in x && "maxZoom" in x;
-  const url = options.url;
-  const source = new ImageTile(options);
-  const projection = source.getProjection()?.getCode();
-  const tileGrid = source.getTileGrid();
-  let minZoom = tileGrid?.getMinZoom();
-  let maxZoom = tileGrid?.getMaxZoom();
-  if (hasMinMaxZoom(options)) {
-    minZoom = minZoom || options.minZoom;
-    maxZoom = maxZoom || options.maxZoom;
-  }
+  const loader = makeTileLoaderFromUrlLike(sourceOptions.url);
+  const generator = makeGeneratorFromTileLoader(loader);
 
-  if (!minZoom || !maxZoom) throw new Error("Missing minZoom and/or maxZoom");
-  if (!tileGrid) throw new Error("Missing tileGrid");
+  const tileCollection = makeTileCollectionFromSource({
+    url: sourceOptions.url,
+    load: generator,
+    source: new ImageTile(sourceOptions),
+    minZoom: tileCollectionOptions.minZoom,
+    maxZoom: tileCollectionOptions.maxZoom,
+    targetExtent: tileCollectionOptions.targetExtent,
+    targetProjection: tileCollectionOptions.targetProjection,
+  });
 
-  // Calculate TileRanges
-  let totalCount: number = 0;
-  const tileRanges: TileRanges = [];
-
-  const extent = optionsExtent.projection
-    ? transformExtent(
-        optionsExtent.extent,
-        optionsExtent.projection,
-        source.getProjection() || "EPSG:3857"
-      )
-    : optionsExtent.extent;
-  for (let z = minZoom; z <= maxZoom; z++) {
-    const tileRange = tileGrid.getTileRangeForExtentAndZ(extent, z);
-    const count = tileRange.getHeight() * tileRange.getWidth();
-    tileRanges.push({ z, count, tileRange });
-    totalCount += count;
-  }
-
-  const tileLoaders = generateTileLoaders(options.url, tileRanges);
-
-  return {
-    tileLoaders,
-    tileRanges,
-    totalCount,
-    minZoom,
-    maxZoom,
-    projection,
-    extent,
-    url,
-  };
+  return tileCollection;
 }
 
-function* generateTileLoaders(
-  url: UrlLike,
-  tileRanges: TileRanges
-): Generator<UnfetchedTile, void, unknown> {
-  const loader = makeLoaderFromUrlLike(url);
-  const controller = new AbortController();
-  const loaderOptions: LoaderOptions = {
-    signal: controller.signal,
-  };
-
-  for (const { z, tileRange } of tileRanges) {
-    const { minX, maxX, minY, maxY } = tileRange;
-    for (let x = minX; x <= maxX; x++) {
-      for (let y = minY; y <= maxY; y++) {
-        const load = partial(loader, z, x, y, loaderOptions);
-        yield { x, y, z, load, controller };
-      }
-    }
+function makeTileUrlFunction(template: string) {
+  function getTileUrl(z: number, x: number, y: number): string {
+    const url = renderXYZTemplate(template, z, x, y);
+    return url;
   }
+  return getTileUrl;
 }
 
-function loadImage(
-  template: string,
-  z: number,
-  x: number,
-  y: number,
-  options: LoaderOptions
-): Promise<FetchedTile> {
-  const url = renderXYZTemplate(template, z, x, y, options.maxY);
-  return fetch(url)
-    .then((response) => {
-      if (response.ok) {
-        return response.blob();
-      } else {
-        return Promise.reject(new Error("Image failed to load"));
-      }
-    })
-    .then((blob) => {
-      return { x, y, z, blob, url };
-    });
-}
-
-function makeLoaderFromTemplates(templates: Array<string>) {
-  return function (z: number, x: number, y: number, options: LoaderOptions) {
+function makeTileLoaderFromTemplates(templates: Array<string>) {
+  return function(z: number, x: number, y: number) {
     const template = pickUrl(templates, z, x, y);
-    return loadImage(template, z, x, y, options);
+    const urlFunction = makeTileUrlFunction(template)
+    const loader = makeTileLoader(urlFunction)
+    return loader(z, x, y);
   };
 }
 
-function makeLoaderFromGetter(getter: UrlGetter) {
-  return function (z: number, x: number, y: number, options: LoaderOptions) {
-    const url = getter(z, x, y, options);
-    return loadImage(url, z, x, y, options);
-  };
-}
-
-function makeLoaderFromUrlLike(url: UrlLike) {
-  let loader: (
-    z: number,
-    x: number,
-    y: number,
-    options: LoaderOptions
-  ) => Promise<FetchedTile>;
+function makeTileLoaderFromUrlLike(
+  url: UrlLike
+): (z: number, x: number, y: number) => Promise<FetchedTile> {
+  let loader;
 
   if (Array.isArray(url)) {
-    loader = makeLoaderFromTemplates(url);
+    loader = makeTileLoaderFromTemplates(url);
   } else if (typeof url === "string") {
     const urls = expandUrl(url);
-    loader = makeLoaderFromTemplates(urls);
-  } else if (typeof url === "function") {
-    loader = makeLoaderFromGetter(url);
+    loader = makeTileLoaderFromTemplates(urls);
   } else {
     throw new Error(
       "The url option must be a single template, an array of templates, or a function for getting a URL"
@@ -168,3 +66,4 @@ function makeLoaderFromUrlLike(url: UrlLike) {
   }
   return loader;
 }
+

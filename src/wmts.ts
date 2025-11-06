@@ -1,30 +1,122 @@
-import { containsExtent } from "ol/extent";
+import { isUndefined, pickBy } from "lodash";
 import WMTSCapabilities from "ol/format/WMTSCapabilities.js";
-import { get as getProjection, transformExtent } from "ol/proj";
-import type { TileImage } from "ol/source";
-import WMTS, { optionsFromCapabilities, type Options } from "ol/source/WMTS.js";
+import { get, type Projection } from "ol/proj";
+import type { Options as OlOptions } from "ol/source/WMTS.js";
+import WMTS, {
+  optionsFromCapabilities as optionsFromCapabilitiesOl,
+} from "ol/source/WMTS.js";
+import type { UrlFunction } from "ol/Tile";
+import type WMTSTileGrid from "ol/tilegrid/WMTS";
+import {
+  makeGeneratorFromTileLoader,
+  makeTileCollectionFromSource,
+  makeTileLoader,
+} from "./tiles";
 import type {
-  customWMTSOptions,
-  FetchTilesConfig,
   OptionsFromCapabilities,
-  Selection,
-  TileRanges,
-  TileUrls,
-  WMTSConfig,
+  TileCollection,
+  TileCollectionOptions,
 } from "./types";
 
-const parser = new WMTSCapabilities();
+type SourceOptions = Omit<
+  OlOptions,
+  "tileLoadFunction" | "tileGrid" | "style" | "matrixSet"
+> & {
+  // original properties converted to optional
+  matrixSet?: string;
+  tileGrid?: WMTSTileGrid;
+  style?: string;
+};
 
-export async function getOptions(
-  capabilitiesUrl: string,
+export default async function makeTileCollection(
+  sourceOptions: SourceOptions,
+  tileCollectionOptions: TileCollectionOptions,
+  wmtsCapabilitiesUrl?: string
+): Promise<TileCollection> {
+  if (wmtsCapabilitiesUrl) {
+    const projection =
+      typeof sourceOptions.projection === "string"
+        ? sourceOptions.projection
+        : sourceOptions.projection?.getCode();
+
+    const capOptions = await optionsFromCapabilities(wmtsCapabilitiesUrl, {
+      layer: sourceOptions.layer,
+      matrixSet: sourceOptions.matrixSet,
+      projection,
+      requestEncoding: sourceOptions.requestEncoding,
+      style: sourceOptions.style,
+      format: sourceOptions.format,
+      crossOrigin: sourceOptions.crossOrigin,
+    });
+
+    if (capOptions) {
+      sourceOptions = { ...sourceOptions, ...capOptions };
+    }
+  }
+
+  // Might be filled in by optionsFromCapabilities
+  const url = sourceOptions.urls || sourceOptions.url;
+  if (!url) {
+    return Promise.reject(new Error("No URL provided"));
+  }
+
+  const findMissingWMTSOptions = (sourceOptions: SourceOptions | OlOptions): string[] => {
+    const missingOptions = pickBy(
+      {
+        matrixSet: sourceOptions.matrixSet,
+        tileGrid: sourceOptions.tileGrid,
+        style: sourceOptions.style,
+      },
+      isUndefined
+    );
+    return Object.keys(missingOptions);
+  };
+
+  const isValidWMTSOptions = (
+    sourceOptions: SourceOptions | OlOptions
+  ): sourceOptions is OlOptions => {
+    if (findMissingWMTSOptions(sourceOptions).length > 0) {
+      return false;
+    }
+    return true;
+  };
+
+  if (!isValidWMTSOptions(sourceOptions)) {
+    return Promise.reject(
+      new Error(`Missing sourceOptions: ${findMissingWMTSOptions(sourceOptions)}`)
+    );
+  }
+
+  const source = new WMTS(sourceOptions);
+  const renderWMTSTemplate = source.getTileUrlFunction();
+  const urlFunction = makeTileUrlFunctionFromUrlFunction(renderWMTSTemplate);
+  const loader = makeTileLoaderFromUrlFunction(urlFunction);
+  const generator = makeGeneratorFromTileLoader(loader);
+
+  const tileLoaders = makeTileCollectionFromSource({
+    url: url,
+    load: generator,
+    source: source,
+    minZoom: tileCollectionOptions.minZoom,
+    maxZoom: tileCollectionOptions.maxZoom,
+    targetExtent: tileCollectionOptions.targetExtent,
+    targetProjection: tileCollectionOptions.targetProjection,
+  });
+
+  return Promise.resolve(tileLoaders);
+}
+
+async function optionsFromCapabilities(
+  url: string,
   config: OptionsFromCapabilities
-): Promise<Options> {
-  let text = await fetch(capabilitiesUrl).then((response) => response.text());
+): Promise<OlOptions | null> {
+  let text = await fetch(url).then((response) => response.text());
 
   // WORKAROUND: CDATA causes parsing error during testing (due to the DOM-replacement library `happy-dom`)
   text = text.replace(/<!\[CDATA\[(.*?)\]\]>/gs, "$1");
 
   // Parse XML into an object
+  const parser = new WMTSCapabilities();
   const result = parser.read(text);
 
   // WORKAROUND: empty list for TileMatrixSetLimits produces error -> set to undefined
@@ -38,88 +130,30 @@ export async function getOptions(
     }
   });
 
-  const options = optionsFromCapabilities(result, config);
-  if (!options) throw new Error("optionsFromCapabilities failed");
-  return options;
+  return optionsFromCapabilitiesOl(result, config);
 }
 
-export function* getTileUrls(
-  source: TileImage,
-  options: Selection
-): Generator<TileUrls, void, unknown> {
-  const tilegrid = source.getTileGrid();
-  const getUrl = source.getTileUrlFunction();
-  const extent = tilegrid?.getExtent();
-  const projection = source.getProjection();
-  const bbox = transformExtent(options.bbox, "EPSG:4326", projection?.getCode());
+function makeTileUrlFunctionFromUrlFunction(renderFunction: UrlFunction) {
+  const pixelRatioPlaceholder = 1;
+  const projectionPlaceholder = get("EPSG:3857") as Projection;
 
-  if (!extent) throw new Error("No extent found");
-  if (!projection) throw new Error("No projection specified");
-  if (!containsExtent(extent, options.bbox)) throw new Error("BBOX exceeds valid bounds");
-  if (!tilegrid) throw new Error("No tilegrid found");
+  function getTileUrl(z: number, x: number, y: number) {
+    const url = renderFunction([z, x, y], pixelRatioPlaceholder, projectionPlaceholder);
 
-  for (let zoom = options.minZoom; zoom <= options.maxZoom; zoom++) {
-    let count: number = 0;
-    const urls: string[] = [];
-
-    tilegrid.forEachTileCoord(bbox, zoom, (tilecoord) => {
-      const url = getUrl(tilecoord, zoom, projection);
-      if (url) {
-        urls.push(url);
-        count++;
-      }
-    });
-
-    const tileUrls: TileUrls = { zoom, count, urls };
-    yield tileUrls;
+    if (!url) {
+      throw new Error(`No Tile at z: ${z}, x: ${x}, y: ${y}`);
+    }
+    return url;
   }
+
+  return getTileUrl;
 }
 
-export function getWMTSUrls(options: customWMTSOptions) {
-  return getTileUrls(new WMTS(options), options);
-}
-
-export async function processWMTSTilesConfig({
-  config,
-  options,
-}: WMTSConfig): Promise<FetchTilesConfig> {
-  const { bbox, minZoom, maxZoom } = config;
-  const crs = getProjection(options.projection)?.getCode();
-  const extent = getProjection(options.projection)?.getExtent();
-
-  // Fail early
-  if (!options.url && !options.urls) {
-    throw new Error("Missing URL");
-  } else if (!crs) {
-    throw new Error("Couldn't get a valid EPSG-code");
-  } else if (!extent) {
-    throw new Error(`Couldn't get the extent for ${crs}`);
-  } else if (!containsExtent(extent, bbox)) {
-    throw new Error(`The supplied bounding box exceeds the extent of ${crs}`);
-  }
-
-  // Calculate TileRanges
-  let totalCount: number = 0;
-  const tileRanges: TileRanges = [];
-
-  const url = options.url || (options.urls ? options.urls[0] ?? "" : "");
-  const tileGrid = options.tileGrid;
-  const targetCrsBbox = transformExtent(bbox, "EPSG:4326", crs);
-
-  for (let z = minZoom; z <= maxZoom; z++) {
-    const tileRange = tileGrid.getTileRangeForExtentAndZ(targetCrsBbox, z);
-    const count = tileRange.getHeight() * tileRange.getWidth();
-    tileRanges.push({ z, count, tileRange });
-    totalCount += count;
-  }
-
-  return {
-    crs,
-    bbox,
-    minZoom,
-    maxZoom,
-    totalCount,
-    tileRanges,
-    url,
+function makeTileLoaderFromUrlFunction(
+  urlFunction: (z: number, x: number, y: number) => string
+) {
+  return function (z: number, x: number, y: number) {
+    const loader = makeTileLoader(urlFunction);
+    return loader(z, x, y);
   };
 }
