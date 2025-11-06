@@ -27,19 +27,29 @@ docker/          - TileServer-GL (8082) + GeoServer (8083) for integration tests
 
 ## Key Functions
 
+**tiles.ts:**
+- `fetchTiles(tileCollection, options?)` - AsyncGenerator yielding FetchedTile with parallel download control (max 6)
+- `makeTileCollectionFromSource(options)` - Creates TileCollection from OpenLayers source
+- `makeTileLoader(urlFunction)` - Creates async loader from URL function
+- `makeGeneratorFromTileLoader(loader)` - Creates generator from tile loader
+
 **xyz.ts:**
-- `getXYZUrls(options)` - Generator for XYZ tile URLs
+- `makeXYZTileCollection(sourceOptions, tileCollectionOptions)` - Default export, sync function returning TileCollection for XYZ tiles
+- Helpers: `makeTileUrlFunction()`, `makeTileLoaderFromTemplates()`, `makeTileLoaderFromUrlLike()`
 
 **wmts.ts:**
-- `getOptions(capabilitiesUrl, config)` - Fetch & parse WMTS GetCapabilities XML
-- `getWMTSUrls(options)` - Generator for WMTS tile URLs
+- `makeWMTSTileCollection(sourceOptions, tileCollectionOptions, wmtsCapabilitiesUrl?)` - Default export, async function returning Promise&lt;TileCollection&gt;
+- `optionsFromCapabilities(url, config)` - Fetches/parses WMTS GetCapabilities XML (includes CDATA/TileMatrixSetLimits workarounds)
+- Helpers: `makeTileUrlFunctionFromUrlFunction()`, `makeTileLoaderFromUrlFunction()`
 
-**tiles.ts:**
-- `class Tiles` - Main async tile downloader (static async create())
-- `processTilesConfig(config)` - Process XYZ or WMTS config into FetchTilesConfig
-- `fetchTile(unfetchedTile)` - Fetch single tile, return blob
-- `fetchTiles(config, options)` - AsyncGenerator with parallel download control
-- `getTileUrls(source, options)` - Generator for tile URLs from OpenLayers source
+**types.ts:**
+- `Extent` - Tuple [minX, minY, maxX, maxY]
+- `TileRanges` - Array of {z, count, tileRange}
+- `UnfetchedTile` - {x, y, z, load()}
+- `FetchedTile` - {x, y, z, url, blob}
+- `OptionsFromCapabilities` - WMTS config (layer, matrixSet, projection, etc.)
+- `TileCollection` - {tileLoaders, tileRanges, totalCount, minZoom, maxZoom, projection, extent, url}
+- `TileCollectionOptions` - {minZoom, maxZoom, targetExtent, targetProjection?}
 
 **utils.ts:**
 - `formatBytes(bytes, decimals)` - Human-readable byte formatting
