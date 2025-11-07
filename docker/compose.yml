@@ -1,0 +1,21 @@
+services:
+  qgis-server:
+    image: qgis/qgis-server:ltr
+    ports:
+      - "127.0.0.1:8001:80"
+    volumes:
+     - ./qgis-server/data:/io/data:ro
+    environment:
+      # Do not run the embedded copy of nginx
+      # SKIP_NGINX: true
+      QGIS_PROJECT_FILE: /io/data/world/world.qgs
+      QGIS_SERVER_LOG_LEVEL: 0
+      # Adjust based on available server capacities
+      MAX_CACHE_LAYERS: 100
+      # Improve rendering performance
+      QGIS_SERVER_MAX_THREADS: 4
+      QGIS_SERVER_PARALLEL_RENDERING: "true"
+      # Limit the maximum size returned by a GetMap
+      QGIS_SERVER_WMS_MAX_WIDTH: 5000
+      QGIS_SERVER_WMS_MAX_HEIGHT: 5000
+    restart: "no"

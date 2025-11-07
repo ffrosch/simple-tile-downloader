@@ -34,7 +34,7 @@ afterAll(async () => {
   await GlobalRegistrator.unregister();
 });
 
-describe("makeWMTSTileCollection", () => {
+describe("makeWMTSTileCollection with mock-server", () => {
   beforeAll(() => {
     // Override fetch with our mock that works correctly
     // @ts-ignore

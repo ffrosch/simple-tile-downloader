@@ -28,7 +28,11 @@
   "scripts": {
     "build": "bun build ./src/index.ts --outfile=dist/index.js --target=browser --packages=external --production && bun run build:declaration",
     "build:declaration": "tsc --project tsconfig.types.json",
-    "publish": "bun run build && bun publish"
+    "publish": "bun run build && bun publish",
+    "test:docker:up": "docker compose -f docker/compose.yml up -d --wait",
+    "test:docker:down": "docker compose -f docker/compose.yml down",
+    "test:docker": "bun run test:docker:up && bun test tests/integration && bun run test:docker:down",
+    "test:all": "bun run test:docker:up && bun test && bun run test:docker:down"
   },
   "exports": {
     ".": {
