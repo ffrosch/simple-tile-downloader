@@ -125,6 +125,21 @@ export async function optionsFromCapabilities(
 ): Promise<OlOptions | null> {
   const cap = await fetchCapabilities(url);
 
+  if (config.matrixSet) {
+    const matrixSets = cap["Contents"]["TileMatrixSet"].map((tms: any) => tms.Identifier) as Array<string>
+    if (!matrixSets.includes(config.matrixSet)) {
+      throw new Error(`"${config.matrixSet}" not found in ${matrixSets}`)
+    }
+  }
+
+  if (config.projection) {
+    const projections = cap["Contents"]["TileMatrixSet"].map((tms: any) => {
+      return get(tms.SupportedCRS)?.getCode() || tms.SupportedCRS
+    }) as Array<string>
+    if (!projections.includes(config.projection)) {
+      throw new Error(`"${config.projection}" not found in ${projections}`)
+    }
+  }
 
   // WORKAROUND: empty list for TileMatrixSetLimits produces error -> set to undefined
   const layers = cap["Contents"]["Layer"];
