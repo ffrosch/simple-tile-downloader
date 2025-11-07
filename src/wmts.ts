@@ -106,10 +106,7 @@ export default async function makeTileCollection(
   return Promise.resolve(tileLoaders);
 }
 
-async function optionsFromCapabilities(
-  url: string,
-  config: OptionsFromCapabilities
-): Promise<OlOptions | null> {
+export async function fetchCapabilities(url: string) {
   let text = await fetch(url).then((response) => response.text());
 
   // WORKAROUND: CDATA causes parsing error during testing (due to the DOM-replacement library `happy-dom`)
@@ -119,8 +116,18 @@ async function optionsFromCapabilities(
   const parser = new WMTSCapabilities();
   const result = parser.read(text);
 
+  return result
+}
+
+export async function optionsFromCapabilities(
+  url: string,
+  config: OptionsFromCapabilities
+): Promise<OlOptions | null> {
+  const cap = await fetchCapabilities(url);
+
+
   // WORKAROUND: empty list for TileMatrixSetLimits produces error -> set to undefined
-  const layers = result["Contents"]["Layer"];
+  const layers = cap["Contents"]["Layer"];
   const l = layers?.find(function (elt: any) {
     return elt["Identifier"] == config.layer;
   });
@@ -130,7 +137,7 @@ async function optionsFromCapabilities(
     }
   });
 
-  return optionsFromCapabilitiesOl(result, config);
+  return optionsFromCapabilitiesOl(cap, config);
 }
 
 function makeTileUrlFunctionFromUrlFunction(renderFunction: UrlFunction) {
